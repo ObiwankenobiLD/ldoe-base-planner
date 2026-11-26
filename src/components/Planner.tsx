@@ -337,7 +337,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
           <button onClick={() => commit(freshPlan())}>{ui.clearAll}</button>
           <button onClick={() => zoomCenter(1 / 1.2)}>−</button><span className="mu">{Math.round(cam.z * 100)} %</span><button onClick={() => zoomCenter(1.2)}>+</button>
           <button onClick={() => fit(0)}>{ui.resetCamera}</button>
-          <button aria-pressed={cam.a === 45} onClick={() => fit(cam.a === 45 ? 0 : 45)}>{ui.view45}</button>
+          <button aria-pressed={cam.a === -45} onClick={() => fit(cam.a === -45 ? 0 : -45)}>{ui.view45}</button>
           <select aria-label={dict.language} value={locale} onChange={e => changeLang(e.target.value as Locale)} style={{ marginLeft: 'auto' }}>{locales.map(l => <option key={l} value={l}>{LOCALE_LABEL[l]}</option>)}</select>
         </div>
         <p className="foot mu">{CATALOG.filter(i => counts[i.id]).map(i => `${dict.items[i.id]} : ${counts[i.id]}`).join(' · ') || ui.noObjects}</p>
