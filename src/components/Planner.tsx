@@ -5,7 +5,7 @@ import { LANG_KEY, LOCALE_LABEL, locales } from '@/i18n/config'
 import type { Locale } from '@/i18n/config'
 import { fmt } from '@/i18n/dictionaries'
 import type { Dict } from '@/i18n/dictionaries'
-import { CATALOG, FLOOR_COLORS, WALL_COLORS, canPlace, edgeBlocked, edgeLine, edgeRect, eIdx, fillCells, fp, inB, inE, isHole, itemOf, lineCells, nbGroup, nbKey, nearestEdge, newPlan, objAt, rectCells } from '@/lib/plan'
+import { CATALOG, FLOOR_COLORS, FLOOR_IMAGES, WALL_COLORS, canPlace, edgeBlocked, edgeLine, edgeRect, eIdx, fillCells, fp, inB, inE, isHole, itemOf, lineCells, nbGroup, nbKey, nearestEdge, newPlan, objAt, rectCells } from '@/lib/plan'
 import type { EdgeRef, Item, Kind, Plan, Pt, Rot } from '@/lib/plan'
 
 type Tool = 'floor' | 'wall' | 'object' | 'eraser' | 'hand'
@@ -225,7 +225,18 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
     const k = `${plan.w}x${plan.h}${ok ? 'i' : 'p'}${plan.hole.map((h, i) => h ? 1 : plan.nb[i] ? 2 : 0).join('')}`
     if (terrain.current?.k !== k) terrain.current = { k, c: makeTerrain(plan.w + 2 * M, plan.h + 2 * M, ok ? grass.current : undefined, plan.hole, plan.nb, plan.w) }
     g.drawImage(terrain.current.c, 0, 0); g.translate(M * CS, M * CS)
-    for (let y = 0; y < plan.h; y++) for (let x = 0; x < plan.w; x++) { const l = plan.floor[y * plan.w + x]; if (l) { g.fillStyle = FLOOR_COLORS[l]; g.fillRect(x * CS, y * CS, CS, CS) } }
+    const floorImg = (l: number) => {
+      const src = FLOOR_IMAGES[l]; if (!src) return undefined
+      let im = imgs.current.get(src)
+      if (!im) { im = new Image(); im.onload = () => setTick(t => t + 1); im.src = asset(src); imgs.current.set(src, im) }
+      return im.complete && im.naturalWidth > 0 ? im : undefined
+    }
+    for (let y = 0; y < plan.h; y++) for (let x = 0; x < plan.w; x++) {
+      const l = plan.floor[y * plan.w + x]; if (!l) continue
+      const im = floorImg(l)
+      if (im) g.drawImage(im, x * CS, y * CS, CS, CS)
+      else { g.fillStyle = FLOOR_COLORS[l]; g.fillRect(x * CS, y * CS, CS, CS) }
+    }
     // Zones interdites : simple teinte rouge transparente sur l'herbe (pas de zone claire dessous), avec de grandes croix rouges
     g.fillStyle = 'rgba(230,60,60,.32)'
     for (let y = 0; y < plan.h; y++) for (let x = 0; x < plan.w; x++) if (plan.nb[y * plan.w + x]) g.fillRect(x * CS, y * CS, CS, CS)
@@ -309,7 +320,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
 
   const counts = plan.objs.reduce<Record<string, number>>((a, o) => (a[o.t] = (a[o.t] || 0) + 1, a), {})
   const lv = (
-    <div className="row">{[1, 2, 3, 4, 5].map(l => <button key={l} aria-pressed={level === l} onClick={() => setLevel(l)}><span className="sw" style={{ background: tool === 'wall' ? WALL_COLORS[l] : FLOOR_COLORS[l] }} />{l}</button>)}</div>
+    <div className="row">{[1, 2, 3, 4, 5].map(l => <button key={l} aria-pressed={level === l} onClick={() => setLevel(l)}><span className="sw" style={tool !== 'wall' && FLOOR_IMAGES[l] ? { background: `${FLOOR_COLORS[l]} url(${asset(FLOOR_IMAGES[l]!)}) center/cover` } : { background: tool === 'wall' ? WALL_COLORS[l] : FLOOR_COLORS[l] }} />{l}</button>)}</div>
   )
   return (
     <div className="app">
