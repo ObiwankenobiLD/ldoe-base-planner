@@ -140,9 +140,18 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
   const loaded = useRef(false)
   const view = useRef<HTMLElement>(null)
   const pan = useRef<{ sx: number; sy: number; x: number; y: number } | null>(null)
-  const [cam, setCam] = useState({ x: 0, y: 0, z: 1 })
-  const fit = () => { const v = view.current; if (!v) return; const cw = (GW + 2 * M) * CS, ch = (GH + 2 * M) * CS, z = Math.min(v.clientWidth / cw, v.clientHeight / ch) * .95; setCam({ z, x: (v.clientWidth - cw * z) / 2, y: (v.clientHeight - ch * z) / 2 }) }
-  const zoomAt = (px: number, py: number, f: number) => setCam(c => { const z = Math.min(4, Math.max(.2, c.z * f)), k = z / c.z; return { z, x: px - (px - c.x) * k, y: py - (py - c.y) * k } })
+  const [cam, setCam] = useState({ x: 0, y: 0, z: 1, a: 0 }) // a = angle de la vue en degrés (0 ou 45)
+  // Cadre tout le plan dans la vue, avec la rotation demandée (0 = normal, 45 = vue en diagonale), centré.
+  const fit = (a = 0) => {
+    const v = view.current; if (!v) return
+    const cw = (GW + 2 * M) * CS, ch = (GH + 2 * M) * CS, r = a * Math.PI / 180, co = Math.cos(r), si = Math.sin(r)
+    const bw = cw * Math.abs(co) + ch * Math.abs(si), bh = cw * Math.abs(si) + ch * Math.abs(co)
+    const z = Math.min(v.clientWidth / bw, v.clientHeight / bh) * .95
+    // le centre du plan (cw/2, ch/2) doit tomber au centre de la vue
+    const px = cw / 2 * z, py = ch / 2 * z
+    setCam({ z, a, x: v.clientWidth / 2 - (px * co - py * si), y: v.clientHeight / 2 - (px * si + py * co) })
+  }
+  const zoomAt = (px: number, py: number, f: number) => setCam(c => { const z = Math.min(4, Math.max(.2, c.z * f)), k = z / c.z; return { ...c, z, x: px - (px - c.x) * k, y: py - (py - c.y) * k } })
   const zoomCenter = (f: number) => { const v = view.current; if (v) zoomAt(v.clientWidth / 2, v.clientHeight / 2, f) }
   const wheel = (e: React.WheelEvent) => { const r = view.current!.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.1 : 1 / 1.1) }
   const vDown = (e: React.PointerEvent) => { if (tool === 'hand' || e.button === 1 || e.target !== cv.current) { pan.current = { sx: e.clientX, sy: e.clientY, x: cam.x, y: cam.y }; view.current!.setPointerCapture(e.pointerId) } }
@@ -173,7 +182,11 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
   })
 
   const target = (e: React.PointerEvent): Tgt => {
-    const r = cv.current!.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width * (plan.w + 2 * M) - M, fy = (e.clientY - r.top) / r.height * (plan.h + 2 * M) - M
+    // On retrouve le point du plan sous la souris en annulant le déplacement, la rotation et le zoom de la caméra.
+    const vr = view.current!.getBoundingClientRect(), r = cam.a * Math.PI / 180, co = Math.cos(r), si = Math.sin(r)
+    const dx = e.clientX - vr.left - cam.x, dy = e.clientY - vr.top - cam.y
+    const px = (dx * co + dy * si) / cam.z, py = (-dx * si + dy * co) / cam.z
+    const fx = px / CS - M, fy = py / CS - M
     return { cell: { x: Math.floor(fx), y: Math.floor(fy) }, vert: { x: Math.round(fx), y: Math.round(fy) }, edge: nearestEdge(fx, fy) }
   }
   const shape = (a: Tgt, b: Tgt): Shape => {
@@ -317,13 +330,14 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
         </>}
       </aside>
       <section className="stage" ref={view} style={{ cursor: tool === 'hand' ? 'grab' : undefined }} onPointerDown={vDown} onPointerMove={vMove} onPointerUp={vUp} onPointerCancel={vUp} onWheel={wheel}>
-        <canvas ref={cv} style={{ transform: `translate(${cam.x}px,${cam.y}px) scale(${cam.z})` }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; setPv(null) }} />
+        <canvas ref={cv} style={{ transform: `translate(${cam.x}px,${cam.y}px) rotate(${cam.a}deg) scale(${cam.z})` }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; setPv(null) }} />
         <div className="float" onPointerDown={e => e.stopPropagation()}>
           <button disabled={!undo.current.length} onClick={doUndo}>{ui.undo}</button>
           <button disabled={!redo.current.length} onClick={doRedo}>{ui.redo}</button>
           <button onClick={() => commit(freshPlan())}>{ui.clearAll}</button>
           <button onClick={() => zoomCenter(1 / 1.2)}>−</button><span className="mu">{Math.round(cam.z * 100)} %</span><button onClick={() => zoomCenter(1.2)}>+</button>
-          <button onClick={fit}>{ui.resetCamera}</button>
+          <button onClick={() => fit(0)}>{ui.resetCamera}</button>
+          <button aria-pressed={cam.a === 45} onClick={() => fit(cam.a === 45 ? 0 : 45)}>{ui.view45}</button>
           <select aria-label={dict.language} value={locale} onChange={e => changeLang(e.target.value as Locale)} style={{ marginLeft: 'auto' }}>{locales.map(l => <option key={l} value={l}>{LOCALE_LABEL[l]}</option>)}</select>
         </div>
         <p className="foot mu">{CATALOG.filter(i => counts[i.id]).map(i => `${dict.items[i.id]} : ${counts[i.id]}`).join(' · ') || ui.noObjects}</p>
