@@ -15,6 +15,7 @@ const en: Dict = {
     hintFloor: 'An object can only be placed on a floor.',
     hintFloorMax: 'An object can only be placed on a floor, maximum {max}.',
     undo: 'Undo', redo: 'Redo', clearAll: 'Clear all', resetCamera: 'Reset camera',
+    view45: '45° view',
     noObjects: 'No objects placed.',
     removeDebris: 'Remove debris?', yes: 'Yes', no: 'No',
   },
