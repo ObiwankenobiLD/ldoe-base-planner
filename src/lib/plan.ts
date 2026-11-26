@@ -9,11 +9,12 @@ export type EdgeRef = { o: 'h' | 'v'; x: number; y: number }
 export type ItemId = 'workbench' | 'chest' | 'bed' | 'campfire' | 'generator' | 'shelf' | 'crop'
 export type Item = { id: ItemId; w: number; h: number; color: string; icon: string; rotatable: boolean; max?: number; image?: string }
 
-export const FLOOR_COLORS = ['#8a6a4a', '#a8845a', '#9aa0a6', '#6b7c93', '#5a4a58']
+export const FLOOR_COLORS = ['', '#8a6a4a', '#a8845a', '#9aa0a6', '#6b7c93', '#5a4a58']
 /** Texture de chaque niveau de sol (index = niveau 1 à 5), dessinée sur chaque case. Chemin dans /public.
  *  Niveau sans image (undefined) = repli sur la couleur de FLOOR_COLORS. Pour ajouter un sol : déposer
  *  `main-floorN.webp` dans public/assets/ puis renseigner son chemin ici. */
 export const FLOOR_IMAGES: (string | undefined)[] = [
+  '',
   '/assets/main-floor1.webp',
   '/assets/main-floor2.webp',
   '/assets/main-floor3.webp',
