@@ -14,6 +14,7 @@ export type Dict = {
     rotate: string
     hintFloor: string; hintFloorMax: string // {max}
     undo: string; redo: string; clearAll: string; resetCamera: string
+    view45: string
     noObjects: string
     removeDebris: string; yes: string; no: string
   }
