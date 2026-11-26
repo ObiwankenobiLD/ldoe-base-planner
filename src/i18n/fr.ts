@@ -15,6 +15,7 @@ const fr: Dict = {
     hintFloor: 'Un objet se pose uniquement sur un sol.',
     hintFloorMax: 'Un objet se pose uniquement sur un sol, maximum {max}.',
     undo: 'Annuler', redo: 'Rétablir', clearAll: 'Tout effacer', resetCamera: 'Réinitialiser la caméra',
+    view45: 'Vue 45°',
     noObjects: 'Aucun objet posé.',
     removeDebris: 'Supprimer les débris ?', yes: 'Oui', no: 'Non',
   },
