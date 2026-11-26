@@ -33,13 +33,17 @@ function makeTerrain(cw: number, ch: number, img?: HTMLImageElement, hole?: bool
       g.beginPath(); g.ellipse(px + a * CS, py + b * CS, 3 + a * 8, 2 + b * 5, a * 3, 0, 7); g.fill()
     }
   }
+  paintTint(g, cw, ch, hole, nb, gw)
+  return c
+}
+/** Teinte par-dessus l'herbe : zone constructible claire, zone neutre, vert « hors carte ». */
+function paintTint(g: CanvasRenderingContext2D, cw: number, ch: number, hole?: boolean[], nb?: boolean[], gw = 0) {
   for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
     const inside = x >= M && x < cw - M && y >= M && y < ch - M
     const near = x >= M - BAND && x < cw - M + BAND && y >= M - BAND && y < ch - M + BAND
     const removed = inside && !!(hole?.[(y - M) * gw + (x - M)] || nb?.[(y - M) * gw + (x - M)]) // ni zone claire sous les zones rouges ni sur les cases retirées
     g.fillStyle = inside && !removed ? 'rgba(255,255,255,.12)' : near ? BAND_TINT : 'rgba(70,205,30,.5)'; g.fillRect(x * CS, y * CS, CS, CS)
   }
-  return c
 }
 const asset = (p: string) => (process.env.NEXT_PUBLIC_BASE_PATH || '') + p
 
@@ -140,6 +144,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
   const loaded = useRef(false)
   const view = useRef<HTMLElement>(null)
   const pan = useRef<{ sx: number; sy: number; x: number; y: number } | null>(null)
+  const [size, setSize] = useState({ w: 0, h: 0, dpr: 1 }) // taille de la vue (px CSS) et résolution de l'écran : le canvas est redessiné à la résolution réelle
   const [cam, setCam] = useState({ x: 0, y: 0, z: 1, a: 0 }) // a = angle de la vue en degrés (0 ou 45)
   // Cadre tout le plan dans la vue, avec la rotation demandée (0 = normal, 45 = vue en diagonale), centré.
   const fit = (a = 0) => {
@@ -154,10 +159,16 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
   const zoomAt = (px: number, py: number, f: number) => setCam(c => { const z = Math.min(4, Math.max(.2, c.z * f)), k = z / c.z; return { ...c, z, x: px - (px - c.x) * k, y: py - (py - c.y) * k } })
   const zoomCenter = (f: number) => { const v = view.current; if (v) zoomAt(v.clientWidth / 2, v.clientHeight / 2, f) }
   const wheel = (e: React.WheelEvent) => { const r = view.current!.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, e.deltaY < 0 ? 1.1 : 1 / 1.1) }
-  const vDown = (e: React.PointerEvent) => { if (tool === 'hand' || e.button === 1 || e.target !== cv.current) { pan.current = { sx: e.clientX, sy: e.clientY, x: cam.x, y: cam.y }; view.current!.setPointerCapture(e.pointerId) } }
+  const vDown = (e: React.PointerEvent) => { if (tool === 'hand' || e.button === 1 || e.target !== cv.current || !inWorld(e)) { pan.current = { sx: e.clientX, sy: e.clientY, x: cam.x, y: cam.y }; view.current!.setPointerCapture(e.pointerId) } }
   const vMove = (e: React.PointerEvent) => { const p = pan.current; if (p) setCam(c => ({ ...c, x: p.x + e.clientX - p.sx, y: p.y + e.clientY - p.sy })) }
   const vUp = () => { pan.current = null }
   useEffect(() => { fit() }, [])
+  useEffect(() => {
+    const v = view.current; if (!v) return
+    const upd = () => setSize({ w: v.clientWidth, h: v.clientHeight, dpr: window.devicePixelRatio || 1 })
+    upd(); const ro = new ResizeObserver(upd); ro.observe(v); window.addEventListener('resize', upd)
+    return () => { ro.disconnect(); window.removeEventListener('resize', upd) }
+  }, [])
   const grass = useRef<HTMLImageElement | null>(null)
   const terrain = useRef<{ k: string; c: HTMLCanvasElement } | null>(null)
   type Tgt = { cell: Pt; vert: Pt; edge: EdgeRef }
@@ -181,11 +192,15 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
     window.addEventListener('keydown', f); return () => window.removeEventListener('keydown', f)
   })
 
-  const target = (e: React.PointerEvent): Tgt => {
-    // On retrouve le point du plan sous la souris en annulant le déplacement, la rotation et le zoom de la caméra.
+  // Point du plan sous la souris, en annulant le déplacement, la rotation et le zoom de la caméra.
+  const world = (e: React.PointerEvent) => {
     const vr = view.current!.getBoundingClientRect(), r = cam.a * Math.PI / 180, co = Math.cos(r), si = Math.sin(r)
     const dx = e.clientX - vr.left - cam.x, dy = e.clientY - vr.top - cam.y
-    const px = (dx * co + dy * si) / cam.z, py = (-dx * si + dy * co) / cam.z
+    return { px: (dx * co + dy * si) / cam.z, py: (-dx * si + dy * co) / cam.z }
+  }
+  const inWorld = (e: React.PointerEvent) => { const { px, py } = world(e); return px >= 0 && py >= 0 && px < (GW + 2 * M) * CS && py < (GH + 2 * M) * CS }
+  const target = (e: React.PointerEvent): Tgt => {
+    const { px, py } = world(e)
     const fx = px / CS - M, fy = py / CS - M
     return { cell: { x: Math.floor(fx), y: Math.floor(fy) }, vert: { x: Math.round(fx), y: Math.round(fy) }, edge: nearestEdge(fx, fy) }
   }
@@ -197,7 +212,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
     if (mode === 'fill') return { cells: fillCells(plan, a.cell, level) }
     return { cells: [a.cell] }
   }
-  const down = (e: React.PointerEvent) => { if (e.button !== 0 || tool === 'hand') return; const t = target(e); drag.current = { a: t, path: [t.cell] }; cv.current!.setPointerCapture(e.pointerId); setPv(shape(t, t)) }
+  const down = (e: React.PointerEvent) => { if (e.button !== 0 || tool === 'hand' || !inWorld(e)) return; const t = target(e); drag.current = { a: t, path: [t.cell] }; cv.current!.setPointerCapture(e.pointerId); setPv(shape(t, t)) }
   const move = (e: React.PointerEvent) => {
     const d = drag.current; if (!d) return
     const t = target(e), l = d.path[d.path.length - 1]
@@ -218,13 +233,23 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
 
   useEffect(() => {
     const c = cv.current; if (!c) return
-    const g = c.getContext('2d')!, W = plan.w * CS, H = plan.h * CS
-    c.width = W + 2 * M * CS; c.height = H + 2 * M * CS
+    const g = c.getContext('2d')!, cwu = (plan.w + 2 * M) * CS, chu = (plan.h + 2 * M) * CS
+    const bw = Math.max(1, Math.round(size.w * size.dpr)), bh = Math.max(1, Math.round(size.h * size.dpr))
+    c.width = bw; c.height = bh // (redimensionner efface le canvas : tout est redessiné ci-dessous)
+    g.setTransform(size.dpr, 0, 0, size.dpr, 0, 0)
+    g.translate(cam.x, cam.y); g.rotate(cam.a * Math.PI / 180); g.scale(cam.z, cam.z) // caméra appliquée au dessin : net à tout zoom
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'
     if (!grass.current) { const im = new Image(); im.onload = () => setTick(t => t + 1); im.src = asset('/assets/grass.png'); grass.current = im }
     const ok = grass.current.complete && grass.current.naturalWidth > 0
-    const k = `${plan.w}x${plan.h}${ok ? 'i' : 'p'}${plan.hole.map((h, i) => h ? 1 : plan.nb[i] ? 2 : 0).join('')}`
-    if (terrain.current?.k !== k) terrain.current = { k, c: makeTerrain(plan.w + 2 * M, plan.h + 2 * M, ok ? grass.current : undefined, plan.hole, plan.nb, plan.w) }
-    g.drawImage(terrain.current.c, 0, 0); g.translate(M * CS, M * CS)
+    if (ok) { // herbe en motif redessiné à chaque image : reste nette au zoom
+      g.fillStyle = g.createPattern(grass.current, 'repeat')!; g.fillRect(0, 0, cwu, chu)
+      paintTint(g, plan.w + 2 * M, plan.h + 2 * M, plan.hole, plan.nb, plan.w)
+    } else { // repli sans image : herbe procédurale mise en cache
+      const k = `${plan.w}x${plan.h}p${plan.hole.map((h, i) => h ? 1 : plan.nb[i] ? 2 : 0).join('')}`
+      if (terrain.current?.k !== k) terrain.current = { k, c: makeTerrain(plan.w + 2 * M, plan.h + 2 * M, undefined, plan.hole, plan.nb, plan.w) }
+      g.drawImage(terrain.current.c, 0, 0)
+    }
+    g.translate(M * CS, M * CS)
     const floorImg = (l: number) => {
       const src = FLOOR_IMAGES[l]; if (!src) return undefined
       let im = imgs.current.get(src)
@@ -316,7 +341,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
     walls(plan.hw, 'h', plan.w); walls(plan.vw, 'v', plan.w + 1)
     if (pv?.cells) { g.fillStyle = 'rgba(60,195,214,.35)'; for (const p of pv.cells) if (!isHole(plan, p.x, p.y)) g.fillRect(p.x * CS, p.y * CS, CS, CS) }
     if (pv?.edges) for (const e of pv.edges) if (inE(plan, e) && !edgeBlocked(plan, e)) stroke(e, 'rgba(60,195,214,.8)', 8, 'square')
-  }, [plan, pv, tick])
+  }, [plan, pv, tick, cam, size])
 
   const counts = plan.objs.reduce<Record<string, number>>((a, o) => (a[o.t] = (a[o.t] || 0) + 1, a), {})
   const lv = (
@@ -341,7 +366,7 @@ export default function Planner({ locale, dict }: { locale: Locale; dict: Dict }
         </>}
       </aside>
       <section className="stage" ref={view} style={{ cursor: tool === 'hand' ? 'grab' : undefined }} onPointerDown={vDown} onPointerMove={vMove} onPointerUp={vUp} onPointerCancel={vUp} onWheel={wheel}>
-        <canvas ref={cv} style={{ transform: `translate(${cam.x}px,${cam.y}px) rotate(${cam.a}deg) scale(${cam.z})` }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; setPv(null) }} />
+        <canvas ref={cv} style={{ width: size.w, height: size.h }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { drag.current = null; setPv(null) }} />
         <div className="float" onPointerDown={e => e.stopPropagation()}>
           <button disabled={!undo.current.length} onClick={doUndo}>{ui.undo}</button>
           <button disabled={!redo.current.length} onClick={doRedo}>{ui.redo}</button>
