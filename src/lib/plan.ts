@@ -10,6 +10,17 @@ export type ItemId = 'workbench' | 'chest' | 'bed' | 'campfire' | 'generator' | 
 export type Item = { id: ItemId; w: number; h: number; color: string; icon: string; rotatable: boolean; max?: number; image?: string }
 
 export const FLOOR_COLORS = ['', '#8a6a4a', '#a8845a', '#9aa0a6', '#6b7c93', '#5a4a58']
+/** Texture de chaque niveau de sol (index = niveau 1 à 5), dessinée sur chaque case. Chemin dans /public.
+ *  Niveau sans image (undefined) = repli sur la couleur de FLOOR_COLORS. Pour ajouter un sol : déposer
+ *  `main-floorN.webp` dans public/assets/ puis renseigner son chemin ici. */
+export const FLOOR_IMAGES: (string | undefined)[] = [
+  undefined,
+  '/assets/main-floor1.webp',
+  undefined, // '/assets/main-floor2.webp'
+  undefined, // '/assets/main-floor3.webp'
+  undefined, // '/assets/main-floor4.webp'
+  undefined, // '/assets/main-floor5.webp'
+]
 export const WALL_COLORS = ['', '#7a4a2a', '#c9822b', '#b8bdc1', '#3f5266', '#7b3a32']
 export const CATALOG: Item[] = [
   { id: 'workbench', w: 2, h: 1, color: '#7a5c3a', icon: '🔨', rotatable: true },
