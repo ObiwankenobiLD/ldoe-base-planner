@@ -21,6 +21,20 @@ export const FLOOR_IMAGES: (string | undefined)[] = [
   '/assets/main-floor4.webp',
   '/assets/main-floor5.webp',
 ]
+/** Icônes des sols affichées dans la LISTE du menu (index = niveau 1 à 5). Distinctes des textures ci-dessus, qui servent à dessiner la CARTE. */
+export const FLOOR_ICONS: string[] = [
+  '',
+  '/assets/building-floor1.png',
+  '/assets/building-floor2.png',
+  '/assets/building-floor3.png',
+  '/assets/building-floor4.png',
+  '/assets/building-floor5.png',
+]
+export const WALL_IMAGES: Record<'wall' | 'door' | 'window', string[]> = {
+  wall:   ['', '/assets/building-wall1.png',   '/assets/building-wall2.png',   '/assets/building-wall3.png',   '/assets/building-wall4.png',   '/assets/building-wall5.png'],
+  door:   ['', '/assets/building-door1.png',   '/assets/building-door2.png',   '/assets/building-door3.png',   '/assets/building-door4.png',   '/assets/building-door5.png'],
+  window: ['', '/assets/building-window1.png', '/assets/building-window2.png', '/assets/building-window3.png', '/assets/building-window4.png', '/assets/building-window5.png'],
+}
 export const WALL_COLORS = ['', '#7a4a2a', '#c9822b', '#b8bdc1', '#3f5266', '#7b3a32']
 export const CATALOG: Item[] = [
   { id: 'workbench', w: 2, h: 1, color: '#7a5c3a', icon: '🔨', rotatable: true },
@@ -108,4 +122,46 @@ export function nbGroup(p: Plan, x: number, y: number): Pt[] {
   const k = nbKey(p, i), out: Pt[] = []
   for (let j = 0; j < p.nb.length; j++) if (p.nb[j] && nbKey(p, j) === k) out.push({ x: j % p.w, y: Math.floor(j / p.w) })
   return out
+}
+
+/* ───────── Règles de construction ─────────
+ * Pour ajouter une règle : l'ajouter à RULES (ordre = priorité d'affichage de la popup), la renvoyer depuis
+ * edgeViolation / objViolation, puis ajouter son texte dans ui.warnings (src/i18n/fr.ts et en.ts). */
+export const RULES = ['wallNoFloor', 'wallTier', 'objNoFloor'] as const
+export type Rule = (typeof RULES)[number]
+export type Violation = { rule: Rule; wall?: number; floor?: number }
+/** Niveau de sol le plus haut parmi les (au plus deux) cases qui bordent l'arête. 0 = aucun sol. */
+export function edgeFloorTier(p: Plan, e: EdgeRef): number {
+  const c: Pt[] = e.o === 'h' ? [{ x: e.x, y: e.y - 1 }, { x: e.x, y: e.y }] : [{ x: e.x - 1, y: e.y }, { x: e.x, y: e.y }]
+  return Math.max(0, ...c.filter(q => inB(p, q.x, q.y)).map(q => p.floor[q.y * p.w + q.x]))
+}
+/** Un mur / une porte / une fenêtre de niveau `level` peut-il être posé sur cette arête ? (null = oui) */
+export function edgeViolation(p: Plan, e: EdgeRef, level: number): Violation | null {
+  const f = edgeFloorTier(p, e)
+  if (!f) return { rule: 'wallNoFloor' }
+  if (level > f) return { rule: 'wallTier', wall: level, floor: f }
+  return null
+}
+/** Un objet ne se pose que sur un sol : renvoie une violation si une case de son emprise constructible n'a pas de sol. */
+export function objViolation(p: Plan, it: Item, x: number, y: number, r: Rot): Violation | null {
+  const f = fp(it, r)
+  for (let j = 0; j < f.h; j++) for (let i = 0; i < f.w; i++) {
+    const cx = x + i, cy = y + j
+    if (inB(p, cx, cy) && !p.hole[cy * p.w + cx] && !p.nb[cy * p.w + cx] && !p.floor[cy * p.w + cx]) return { rule: 'objNoFloor' }
+  }
+  return null
+}
+/** Sommet de la grille touchant au moins une case constructible : seuls ces sommets affichent un point et peuvent servir de départ / d'arrivée. */
+export const vertOk = (p: Plan, x: number, y: number) => [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]].some(([cx, cy]) => !isHole(p, cx, cy) && !p.nb[cy * p.w + cx])
+/** Après un changement de sol sur `cells` : retire les murs / portes / fenêtres des 4 côtés de ces cases qui ne respectent plus les règles (plus de sol, ou niveau de mur > niveau du sol).
+ *  Un mur partagé avec une case voisine qui a encore un sol valide est conservé. Modifie `p` en place et renvoie le nombre de murs retirés. */
+export function pruneAround(p: Plan, cells: Pt[]): number {
+  let removed = 0
+  const seen = new Set<string>()
+  for (const c of cells) for (const e of [{ o: 'h', x: c.x, y: c.y }, { o: 'h', x: c.x, y: c.y + 1 }, { o: 'v', x: c.x, y: c.y }, { o: 'v', x: c.x + 1, y: c.y }] as EdgeRef[]) {
+    const key = `${e.o}${e.x},${e.y}`; if (seen.has(key) || !inE(p, e)) continue; seen.add(key)
+    const arr = e.o === 'h' ? p.hw : p.vw, i = eIdx(p, e), w = arr[i]
+    if (w && edgeViolation(p, e, w.l)) { arr[i] = null; removed++ }
+  }
+  return removed
 }
